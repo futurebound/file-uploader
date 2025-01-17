@@ -221,6 +221,28 @@ app.get('/folders', isAuthenticated, async (req, res) => {
   }
 })
 
+app.post('/folders', isAuthenticated, async (req, res) => {
+  try {
+    const { name } = req.body
+
+    if (!name) {
+      return res.status(400).json({ message: 'Folder name is required' })
+    }
+
+    const folder = await prisma.folder.create({
+      data: {
+        name,
+        userId: req.user.id,
+      },
+    })
+
+    res.status(201).json(folder)
+  } catch (error) {
+    console.error('Create folder error:', error)
+    res.status(500).json({ message: 'Error creating folder' })
+  }
+})
+
 /**
  *  ---------------- SERVER ---------------
  */
