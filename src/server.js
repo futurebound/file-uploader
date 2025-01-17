@@ -91,13 +91,6 @@ passport.deserializeUser(async (id, done) => {
 /**
  *  ---------------- MIDDLEWARE ---------------
  */
-const isAuthenticated = (req, res, next) => {
-  if (req.isAuthenticated()) {
-    return next()
-  }
-  res.status(401).json({ message: 'Not authenticated' })
-}
-
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     // Files will be stored in uploads/userId/folderId/
@@ -146,6 +139,14 @@ const upload = multer({
   },
 })
 
+const isAuthenticated = (req, res, next) => {
+  if (req.isAuthenticated()) {
+    return next()
+  }
+  res.status(401).json({ message: 'Not authenticated', redirectUrl: '/' })
+  // res.redirect('/')
+}
+
 /**
  * ---------------- VIEWS ----------------
  */
@@ -155,8 +156,26 @@ app.set('view engine', 'ejs')
 /**
  *  ---------------- ROUTES ---------------
  */
+app.use((req, res, next) => {
+  res.locals.currentUser = req.user
+  next()
+})
+
 app.get('/', (req, res) => {
-  res.send('Server is running!')
+  res.render('index', { user: req.user })
+})
+
+app.post('/login', passport.authenticate('local'), (req, res) => {
+  res.json({ message: 'Logged in successfully', redirectUrl: '/' })
+})
+
+app.post('/logout', (req, res) => {
+  req.logout(function (err) {
+    if (err) {
+      return res.status(500).json({ message: 'Error logging out' })
+    }
+    res.redirect('/login')
+  })
 })
 
 app.get('/signup', (req, res) => {
@@ -199,19 +218,6 @@ app.post('/signup', async (req, res) => {
     console.error('Signup error:', error)
     res.status(500).json({ message: 'Error creating user' })
   }
-})
-
-app.post('/login', passport.authenticate('local'), (req, res) => {
-  res.json({ message: 'Logged in successfully' })
-})
-
-app.post('/logout', (req, res) => {
-  req.logout(function (err) {
-    if (err) {
-      return res.status(500).json({ message: 'Error logging out' })
-    }
-    res.json({ message: 'Logged out successfully' })
-  })
 })
 
 app.get('/folders', isAuthenticated, async (req, res) => {
