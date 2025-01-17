@@ -4,6 +4,7 @@ dotenv.config()
 const express = require('express')
 const expressSession = require('express-session')
 const passport = require('passport')
+const LocalStrategy = require('passport-local').Strategy
 const { PrismaSessionStore } = require('@quixo3/prisma-session-store')
 const { PrismaClient } = require('@prisma/client')
 
@@ -30,7 +31,59 @@ app.use(
   }),
 )
 
+/**
+ *  ---------------- PASSPORT ---------------
+ */
 app.use(passport.session())
+
+passport.use(
+  new LocalStrategy(
+    {
+      usernameField: 'email',
+      passwordField: 'password',
+    },
+    async function (email, password, done) {
+      try {
+        const user = await prisma.user.findUnique({
+          where: { email: email },
+        })
+
+        if (!user) {
+          return done(null, false, { message: 'Incorrect email.' })
+        }
+
+        const isValid = await bcrypt.compare(password, user.password)
+
+        if (!isValid) {
+          return done(null, false, { message: 'Incorrect password.' })
+        }
+
+        return done(null, user)
+      } catch (err) {
+        return done(err)
+      }
+    },
+  ),
+)
+
+passport.serializeUser((user, done) => {
+  done(null, user.id)
+})
+
+passport.deserializeUser(async (id, done) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: id },
+      select: {
+        id: true,
+        email: true,
+      },
+    })
+    done(null, user)
+  } catch (err) {
+    done(err)
+  }
+})
 
 /**
  *  ---------------- ROUTES ---------------
