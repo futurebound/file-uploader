@@ -243,6 +243,33 @@ app.post('/folders', isAuthenticated, async (req, res) => {
   }
 })
 
+app.get('/folders/:folderId/files', isAuthenticated, async (req, res) => {
+  try {
+    const { folderId } = req.params
+
+    const folder = await prisma.folder.findFirst({
+      where: {
+        id: parseInt(folderId),
+        userId: req.user.id,
+      },
+      include: {
+        files: true,
+      },
+    })
+
+    if (!folder) {
+      return res
+        .status(404)
+        .json({ message: 'Folder not found or access denied' })
+    }
+
+    res.json(folder.files)
+  } catch (error) {
+    console.error('Error fetching files:', error)
+    res.status(500).json({ message: 'Error fetching files' })
+  }
+})
+
 /**
  *  ---------------- SERVER ---------------
  */
