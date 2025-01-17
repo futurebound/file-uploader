@@ -9,6 +9,7 @@ const { PrismaClient } = require('@prisma/client')
 const { PrismaSessionStore } = require('@quixo3/prisma-session-store')
 const bcrypt = require('bcryptjs')
 const multer = require('multer')
+const path = require('node:path')
 
 const prisma = new PrismaClient()
 const app = express()
@@ -146,10 +147,20 @@ const upload = multer({
 })
 
 /**
+ * ---------------- VIEWS ----------------
+ */
+app.set('views', path.join(__dirname, 'views'))
+app.set('view engine', 'ejs')
+
+/**
  *  ---------------- ROUTES ---------------
  */
 app.get('/', (req, res) => {
   res.send('Server is running!')
+})
+
+app.get('/signup', (req, res) => {
+  res.render('signupForm')
 })
 
 app.post('/signup', async (req, res) => {
@@ -267,6 +278,74 @@ app.get('/folders/:folderId/files', isAuthenticated, async (req, res) => {
   } catch (error) {
     console.error('Error fetching files:', error)
     res.status(500).json({ message: 'Error fetching files' })
+  }
+})
+
+app.post('/folders/:folderId/files', isAuthenticated, async (req, res) => {
+  const { folderId } = req.params
+
+  try {
+    // Check if folder exists and belongs to user
+    const folder = await prisma.folder.findFirst({
+      where: {
+        id: parseInt(folderId),
+        userId: req.user.id,
+      },
+    })
+
+    if (!folder) {
+      return res
+        .status(404)
+        .json({ message: 'Folder not found or access denied' })
+    }
+
+    // Handle the upload
+    upload.single('file')(req, res, async (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError) {
+          if (err.code === 'LIMIT_FILE_SIZE') {
+            return res
+              .status(400)
+              .json({ message: 'File size too large. Maximum size is 5MB.' })
+          }
+          return res.status(400).json({ message: err.message })
+        }
+        return res.status(500).json({ message: 'Error uploading file' })
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ message: 'No file uploaded' })
+      }
+
+      try {
+        // Save file metadata to database
+        const file = await prisma.file.create({
+          data: {
+            name: req.file.originalname,
+            size: req.file.size,
+            url: req.file.path, // Store the file path
+            folderId: parseInt(folderId),
+          },
+        })
+
+        res.status(201).json({
+          message: 'File uploaded successfully',
+          file: {
+            id: file.id,
+            name: file.name,
+            size: file.size,
+            createdAt: file.createdAt,
+          },
+        })
+      } catch (error) {
+        // If database save fails, remove the uploaded file
+        fs.unlink(req.file.path, () => {})
+        throw error
+      }
+    })
+  } catch (error) {
+    console.error('Upload error:', error)
+    res.status(500).json({ message: 'Error uploading file' })
   }
 })
 
