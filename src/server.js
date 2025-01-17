@@ -8,6 +8,7 @@ const LocalStrategy = require('passport-local').Strategy
 const { PrismaClient } = require('@prisma/client')
 const { PrismaSessionStore } = require('@quixo3/prisma-session-store')
 const bcrypt = require('bcryptjs')
+const multer = require('multer')
 
 const prisma = new PrismaClient()
 const app = express()
@@ -96,6 +97,54 @@ const isAuthenticated = (req, res, next) => {
   res.status(401).json({ message: 'Not authenticated' })
 }
 
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    // Files will be stored in uploads/userId/folderId/
+    const userId = req.user.id
+    const folderId = req.params.folderId
+    const userDir = path.join('uploads', userId.toString())
+    const folderDir = path.join(userDir, folderId.toString())
+
+    // Create directories if they don't exist
+    fs.mkdirSync(userDir, { recursive: true })
+    fs.mkdirSync(folderDir, { recursive: true })
+
+    cb(null, folderDir)
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9)
+    cb(null, uniqueSuffix + path.extname(file.originalname))
+  },
+})
+
+const fileFilter = (req, file, cb) => {
+  // Accept only specific file types
+  const allowedTypes = [
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'application/pdf',
+  ]
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true)
+  } else {
+    cb(
+      new Error(
+        'Invalid file type. Only JPEG, PNG, GIF, and PDF files are allowed.',
+      ),
+      false,
+    )
+  }
+}
+
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+})
+
 /**
  *  ---------------- ROUTES ---------------
  */
@@ -152,6 +201,24 @@ app.post('/logout', (req, res) => {
     }
     res.json({ message: 'Logged out successfully' })
   })
+})
+
+app.get('/folders', isAuthenticated, async (req, res) => {
+  try {
+    const folders = await prisma.folder.findMany({
+      where: {
+        userId: req.user.id,
+      },
+      include: {
+        files: true,
+      },
+    })
+
+    res.json(folders)
+  } catch (error) {
+    console.error('Error fetching folders:', error)
+    res.status(500).json({ message: 'Error fetching folders' })
+  }
 })
 
 /**
