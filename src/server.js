@@ -271,6 +271,53 @@ app.post('/folders', isAuthenticated, async (req, res) => {
   }
 })
 
+/**
+ * Delete folder and all files.
+ */
+app.post('/folders/:folderId/delete', isAuthenticated, async (req, res) => {
+  try {
+    const { folderId } = req.params
+
+    const folder = await prisma.folder.findFirst({
+      where: {
+        id: parseInt(folderId),
+        userId: req.user.id,
+      },
+      include: {
+        files: true,
+      },
+    })
+
+    if (!folder) {
+      return res
+        .status(404)
+        .json({ message: 'Folder not found or access denied' })
+    }
+
+    // Delete physical files
+    const folderPath = path.join(
+      'uploads',
+      req.user.id.toString(),
+      folderId.toString(),
+    )
+    if (fs.existsSync(folderPath)) {
+      fs.rmSync(folderPath, { recursive: true, force: true })
+    }
+
+    // Delete folder and associated files from database
+    await prisma.folder.delete({
+      where: {
+        id: parseInt(folderId),
+      },
+    })
+
+    res.redirect('/dashboard')
+  } catch (error) {
+    console.error('Delete folder error:', error)
+    res.status(500).json({ message: 'Error deleting folder' })
+  }
+})
+
 app.get('/folders/:folderId/files', isAuthenticated, async (req, res) => {
   try {
     const { folderId } = req.params
@@ -345,15 +392,14 @@ app.post('/folders/:folderId/files', isAuthenticated, async (req, res) => {
           },
         })
 
-        res.status(201).json({
-          message: 'File uploaded successfully',
-          file: {
-            id: file.id,
-            name: file.name,
-            size: file.size,
-            createdAt: file.createdAt,
-          },
-        })
+        const createFile = {
+          id: file.id,
+          name: file.name,
+          size: file.size,
+          createdAt: file.createdAt,
+        }
+        console.log('file uploaded successfully:', createFile)
+        res.redirect('/dashboard')
       } catch (error) {
         // If database save fails, remove the uploaded file
         fs.unlink(req.file.path, () => {})
