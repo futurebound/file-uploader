@@ -11,6 +11,8 @@ const bcrypt = require('bcryptjs')
 const multer = require('multer')
 const path = require('node:path')
 const fs = require('fs')
+const cloudinary = require('cloudinary').v2
+const { CloudinaryStorage } = require('multer-storage-cloudinary')
 
 const prisma = new PrismaClient()
 const app = express()
@@ -92,23 +94,66 @@ passport.deserializeUser(async (id, done) => {
 /**
  *  ---------------- MIDDLEWARE ---------------
  */
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    // Files will be stored in uploads/userId/folderId/
-    const userId = req.user.id
-    const folderId = req.params.folderId
-    const userDir = path.join('uploads', userId.toString())
-    const folderDir = path.join(userDir, folderId.toString())
+// const storage = multer.diskStorage({
+//   destination: function (req, file, cb) {
+//     // Files will be stored in uploads/userId/folderId/
+//     const userId = req.user.id
+//     const folderId = req.params.folderId
+//     const userDir = path.join('uploads', userId.toString())
+//     const folderDir = path.join(userDir, folderId.toString())
 
-    // Create directories if they don't exist
-    fs.mkdirSync(userDir, { recursive: true })
-    fs.mkdirSync(folderDir, { recursive: true })
+//     // Create directories if they don't exist
+//     fs.mkdirSync(userDir, { recursive: true })
+//     fs.mkdirSync(folderDir, { recursive: true })
 
-    cb(null, folderDir)
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9)
-    cb(null, uniqueSuffix + path.extname(file.originalname))
+//     cb(null, folderDir)
+//   },
+//   filename: function (req, file, cb) {
+//     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9)
+//     cb(null, uniqueSuffix + path.extname(file.originalname))
+//   },
+// })
+
+const requiredEnvVars = [
+  'CLOUDINARY_CLOUD_NAME',
+  'CLOUDINARY_API_KEY',
+  'CLOUDINARY_API_SECRET',
+]
+
+requiredEnvVars.forEach((envVar) => {
+  if (!process.env[envVar]) {
+    throw new Error(`Missing required environment variable: ${envVar}`)
+  }
+})
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+  secure: true,
+})
+
+// Verify Cloudinary configuration
+console.log('Cloudinary Configuration:', {
+  cloud_name: cloudinary.config().cloud_name,
+  api_key: cloudinary.config().api_key !== undefined,
+  api_secret: cloudinary.config().api_secret !== undefined,
+})
+
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: async (req, file) => {
+    // Validate configuration before upload
+    if (!cloudinary.config().cloud_name) {
+      throw new Error('Cloudinary configuration is missing')
+    }
+
+    return {
+      folder: `users/${req.user.id}/folders/${req.params.folderId}`,
+      allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'pdf'],
+      resource_type: 'auto',
+      public_id: `file_${Date.now()}`, // ensure unique filename
+    }
   },
 })
 
@@ -295,14 +340,25 @@ app.post('/folders/:folderId/delete', isAuthenticated, async (req, res) => {
     }
 
     // Delete physical files
-    const folderPath = path.join(
-      'uploads',
-      req.user.id.toString(),
-      folderId.toString(),
-    )
-    if (fs.existsSync(folderPath)) {
-      fs.rmSync(folderPath, { recursive: true, force: true })
-    }
+    // const folderPath = path.join(
+    //   'uploads',
+    //   req.user.id.toString(),
+    //   folderId.toString(),
+    // )
+    // if (fs.existsSync(folderPath)) {
+    //   fs.rmSync(folderPath, { recursive: true, force: true })
+    // }
+
+    // Delete all files in the folder from Cloudinary
+    const deletePromises = folder.files.map((file) => {
+      if (file.url) {
+        const publicId = file.url.split('/').pop().split('.')[0]
+        return cloudinary.uploader.destroy(publicId)
+      }
+      return Promise.resolve()
+    })
+
+    await Promise.all(deletePromises)
 
     // Delete folder and associated files from database
     await prisma.folder.delete({
@@ -387,22 +443,29 @@ app.post('/folders/:folderId/files', isAuthenticated, async (req, res) => {
           data: {
             name: req.file.originalname,
             size: req.file.size,
-            url: req.file.path, // Store the file path
+            // url: req.file.path, // Store the file path
+            url: req.file.path, // Cloudinary URL
             folderId: parseInt(folderId),
           },
         })
 
-        const createFile = {
+        const createdFile = {
           id: file.id,
           name: file.name,
           size: file.size,
+          url: file.url,
           createdAt: file.createdAt,
         }
-        console.log('file uploaded successfully:', createFile)
+        console.log('file uploaded successfully:', createdFile)
         res.redirect('/dashboard')
       } catch (error) {
         // If database save fails, remove the uploaded file
-        fs.unlink(req.file.path, () => {})
+        // fs.unlink(req.file.path, () => {})
+        // If database save fails, delete the uploaded file from Cloudinary
+        if (req.file?.path) {
+          const publicId = req.file.path.split('/').pop().split('.')[0]
+          cloudinary.uploader.destroy(publicId)
+        }
         throw error
       }
     })
