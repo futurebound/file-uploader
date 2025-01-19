@@ -10,6 +10,7 @@ const { PrismaSessionStore } = require('@quixo3/prisma-session-store')
 const bcrypt = require('bcryptjs')
 const multer = require('multer')
 const path = require('node:path')
+const fs = require('fs')
 
 const prisma = new PrismaClient()
 const app = express()

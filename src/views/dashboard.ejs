@@ -21,6 +21,14 @@
           </li>
           <% }) %>
         </ul>
+        <form
+          action="/folders/<%= folder.id %>/files"
+          method="POST"
+          enctype="multipart/form-data"
+        >
+          <input type="file" name="file" required />
+          <button type="submit">Upload File</button>
+        </form>
       </li>
       <% })%>
     </ul>
