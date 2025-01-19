@@ -350,10 +350,26 @@ app.post('/folders/:folderId/delete', isAuthenticated, async (req, res) => {
     // }
 
     // Delete all files in the folder from Cloudinary
+    // Delete all files in the folder from Cloudinary
     const deletePromises = folder.files.map((file) => {
       if (file.url) {
-        const publicId = file.url.split('/').pop().split('.')[0]
-        return cloudinary.uploader.destroy(publicId)
+        // Extract public ID from Cloudinary URL
+        // Example URL: https://res.cloudinary.com/your-cloud-name/image/upload/v1234567890/users/123/folders/456/filename.jpg
+        const matches = file.url.match(/upload\/(?:v\d+\/)?(.+)$/)
+        if (matches && matches[1]) {
+          const publicId = matches[1].replace(/\.[^/.]+$/, '') // Remove file extension
+          console.log('Deleting Cloudinary asset with public ID:', publicId)
+          return cloudinary.uploader
+            .destroy(publicId)
+            .then((result) => {
+              console.log('Cloudinary delete result:', result)
+              return result
+            })
+            .catch((error) => {
+              console.error('Cloudinary delete error:', error)
+              throw error
+            })
+        }
       }
       return Promise.resolve()
     })
