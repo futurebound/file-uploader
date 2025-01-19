@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard</title>
+  </head>
+  <body>
+    <a href="/logout">LOG OUT</a>
+    <a href="/folders">Create a Folder</a>
+    <ul>
+      <% folders.map((folder) => { %>
+      <li>
+        <p>Folder Name: <%= folder.name %></p>
+        <p>Files:</p>
+        <ul>
+          <% folder.files.map((file) => { %>
+          <li>
+            <p>File Name: <%= file.name %></p>
+            <p>File Size: <%= file.size %></p>
+          </li>
+          <% }) %>
+        </ul>
+      </li>
+      <% })%>
+    </ul>
+  </body>
+</html>

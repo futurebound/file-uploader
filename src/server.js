@@ -165,16 +165,20 @@ app.get('/', (req, res) => {
   res.render('index', { user: req.user })
 })
 
-app.post('/login', passport.authenticate('local'), (req, res) => {
-  res.json({ message: 'Logged in successfully', redirectUrl: '/' })
-})
+app.post(
+  '/login',
+  passport.authenticate('local', {
+    successRedirect: '/',
+    failureRedirect: '/',
+  }),
+)
 
-app.post('/logout', (req, res) => {
+app.get('/logout', (req, res) => {
   req.logout(function (err) {
     if (err) {
       return res.status(500).json({ message: 'Error logging out' })
     }
-    res.redirect('/login')
+    res.redirect('/')
   })
 })
 
@@ -212,6 +216,7 @@ app.post('/signup', async (req, res) => {
       res.status(201).json({
         message: 'User created successfully',
         user: newUser,
+        redirectUrl: '/',
       })
     })
   } catch (error) {
@@ -220,7 +225,7 @@ app.post('/signup', async (req, res) => {
   }
 })
 
-app.get('/folders', isAuthenticated, async (req, res) => {
+app.get('/dashboard', isAuthenticated, async (req, res) => {
   try {
     const folders = await prisma.folder.findMany({
       where: {
@@ -231,11 +236,15 @@ app.get('/folders', isAuthenticated, async (req, res) => {
       },
     })
 
-    res.json(folders)
+    res.render('dashboard', { folders: folders })
   } catch (error) {
     console.error('Error fetching folders:', error)
     res.status(500).json({ message: 'Error fetching folders' })
   }
+})
+
+app.get('/folders', isAuthenticated, async (req, res) => {
+  res.render('createFolderForm')
 })
 
 app.post('/folders', isAuthenticated, async (req, res) => {
@@ -253,7 +262,8 @@ app.post('/folders', isAuthenticated, async (req, res) => {
       },
     })
 
-    res.status(201).json(folder)
+    // res.status(201).json(folder)
+    res.redirect('/dashboard')
   } catch (error) {
     console.error('Create folder error:', error)
     res.status(500).json({ message: 'Error creating folder' })
